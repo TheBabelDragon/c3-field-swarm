@@ -1,0 +1,17 @@
+.pio/
+.vscode/
+.idea/
+*.o
+*.a
+*.elf
+*.bin
+*.map
+__pycache__/
+*.pyc
+.python-version
+.env
+*.swp
+*~
+.DS_Store
+compile_commands.json
+/tools/swarmctl/.venv/
