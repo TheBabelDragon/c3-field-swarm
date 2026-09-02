@@ -25,6 +25,9 @@ public:
     void set_capabilities(uint32_t caps);
 
 private:
+    PacketHeader make_header(uint8_t type);
+    void tx(const uint8_t* buf, size_t n, NodeId dest = kBroadcastNodeId);
+
     void send_hello();
     void send_hello_ack(NodeId dest);
     void send_heartbeat(uint32_t now_ms);
@@ -51,12 +54,12 @@ private:
     void advance_field();
     void note_peer(NodeId id, BootId boot, int8_t rssi, uint64_t seq, uint32_t now_ms);
 
-    Transport* transport_;
-    SwarmRuntime rt_;
-    TickClock clock_;
-    FieldStore field_;
-    uint32_t last_field_ms_;
-    uint32_t last_digest_ms_;
+    Transport* transport_ = nullptr;
+    SwarmRuntime rt_{};
+    TickClock clock_{};
+    FieldStore field_{};
+    uint32_t last_field_ms_ = 0;
+    uint32_t last_digest_ms_ = 0;
 };
 
 #endif

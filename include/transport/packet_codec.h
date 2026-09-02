@@ -45,4 +45,9 @@ bool encode_state_delta(uint8_t* buf, size_t cap, size_t& n, const PacketHeader&
 bool decode_state_delta(const uint8_t* buf, size_t len, PacketHeader& h,
                         FieldState& local, uint32_t& version);
 
+bool encode_command(uint8_t* buf, size_t cap, size_t& n, const PacketHeader& h, const CommandPayload& p);
+bool decode_command(const uint8_t* buf, size_t len, PacketHeader& h, CommandPayload& p);
+
+bool encode_goodbye(uint8_t* buf, size_t cap, size_t& n, const PacketHeader& h);
+
 bool validate_packet(const uint8_t* buf, size_t len, PacketHeader& h);
