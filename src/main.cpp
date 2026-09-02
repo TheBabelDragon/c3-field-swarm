@@ -11,9 +11,9 @@
 static EspNowTransport transport;
 static SwarmCore swarm;
 
-static void on_rx(const uint8_t* data, size_t length, int8_t rssi, void* user) {
+static void on_rx(const uint8_t* data, size_t length, int8_t rssi, const uint8_t* mac, void* user) {
     (void)user;
-    swarm.on_packet(data, length, rssi);
+    swarm.on_packet(data, length, rssi, mac);
 }
 
 void setup() {

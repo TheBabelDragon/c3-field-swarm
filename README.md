@@ -42,9 +42,11 @@ bash scripts/run_host_tests.sh
 
 ## First boot
 
-Every board derives `hardware_id` from the factory MAC, persists a logical `node_id` in NVS, and generates a new `boot_id` each reboot.
+Flash the same firmware onto a blank C3 and power it next to the fleet. It will discover on ESP-NOW channel 1, adopt a live coordinator if one exists, and persist a logical `node_id` in NVS. No SSID, no serial `id`, no prior config.
 
-Assign desk identities 01–06 from the serial console:
+Every board derives `hardware_id` from the factory MAC, persists `node_id` (created from the MAC on first boot, kept after reflash unless NVS is erased), and generates a new `boot_id` each reboot. Duplicate logical ids are resolved: the lower MAC keeps the number, the other persists the next free slot.
+
+Optional desk labels 01–06:
 
 ```
 > id 1

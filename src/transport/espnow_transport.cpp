@@ -13,13 +13,28 @@
 static PacketHandler g_handler = nullptr;
 static void* g_user = nullptr;
 
+static void ensure_peer(const uint8_t mac[6]) {
+    if (mac == nullptr) {
+        return;
+    }
+    if (esp_now_is_peer_exist(mac)) {
+        return;
+    }
+    esp_now_peer_info_t peer = {};
+    memcpy(peer.peer_addr, mac, 6);
+    peer.channel = SWARM_WIFI_CHANNEL;
+    peer.encrypt = false;
+    peer.ifidx = WIFI_IF_STA;
+    esp_now_add_peer(&peer);
+}
+
 static void on_recv(const uint8_t* mac, const uint8_t* data, int len) {
-    (void)mac;
     if (g_handler == nullptr || data == nullptr || len <= 0) {
         return;
     }
+    ensure_peer(mac);
     int8_t rssi = 0;
-    g_handler(data, static_cast<size_t>(len), rssi, g_user);
+    g_handler(data, static_cast<size_t>(len), rssi, mac, g_user);
 }
 
 static const uint8_t kBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -58,6 +73,7 @@ void EspNowTransport::set_handler(PacketHandler handler, void* user) {
 }
 
 void EspNowTransport::map_peer(NodeId id, const uint8_t mac[6]) {
+    ensure_peer(mac);
     for (uint8_t i = 0; i < SWARM_MAX_NODES; ++i) {
         if (peers_[i].used && peers_[i].id == id) {
             memcpy(peers_[i].mac, mac, 6);
@@ -72,6 +88,10 @@ void EspNowTransport::map_peer(NodeId id, const uint8_t mac[6]) {
             return;
         }
     }
+}
+
+void EspNowTransport::remember_peer(NodeId id, const uint8_t mac[6]) {
+    map_peer(id, mac);
 }
 
 bool EspNowTransport::lookup_mac(NodeId id, uint8_t mac[6]) const {
