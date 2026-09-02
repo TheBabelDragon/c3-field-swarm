@@ -16,6 +16,7 @@ COMMON=(
   "$ROOT/src/systems/aggregation.cpp"
   "$ROOT/src/swarm/election.cpp"
   "$ROOT/src/swarm/membership.cpp"
+  "$ROOT/src/swarm/discovery.cpp"
 )
 
 fail=0
@@ -35,6 +36,7 @@ run() {
 run test_protocol "$ROOT/test/test_protocol/test_protocol.cpp"
 run test_field "$ROOT/test/test_field/test_field.cpp"
 run test_election "$ROOT/test/test_election/test_election.cpp"
+run test_join "$ROOT/test/test_join/test_join.cpp"
 run test_determinism "$ROOT/test/test_determinism/test_determinism.cpp"
 
 exit "$fail"

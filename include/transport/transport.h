@@ -11,9 +11,13 @@ public:
     virtual bool begin() = 0;
     virtual bool send(NodeId destination, const uint8_t* data, size_t length) = 0;
     virtual void broadcast(const uint8_t* data, size_t length) = 0;
+    virtual void remember_peer(NodeId id, const uint8_t mac[6]) {
+        (void)id;
+        (void)mac;
+    }
 };
 
-using PacketHandler = void (*)(const uint8_t* data, size_t length, int8_t rssi, void* user);
+using PacketHandler = void (*)(const uint8_t* data, size_t length, int8_t rssi, const uint8_t* mac, void* user);
 
 #ifdef ARDUINO
 class EspNowTransport : public Transport {
@@ -24,6 +28,7 @@ public:
     void set_handler(PacketHandler handler, void* user);
     void map_peer(NodeId id, const uint8_t mac[6]);
     bool lookup_mac(NodeId id, uint8_t mac[6]) const;
+    void remember_peer(NodeId id, const uint8_t mac[6]) override;
 
 private:
     struct Peer {

@@ -6,6 +6,7 @@
 
 #include "swarm/election.h"
 #include "swarm/protocol.h"
+#include "swarm/join.h"
 #include "transport/packet_codec.h"
 #include "field/field_view.h"
 #include "field/field_delta.h"
@@ -26,6 +27,7 @@ void SwarmCore::begin(Transport& transport, const NodeIdentity& self, uint32_t c
     field_store_init(field_);
     last_field_ms_ = 0;
     last_digest_ms_ = 0;
+    discovery_until_ms_ = millis() + SWARM_DISCOVERY_MS;
     rt_.phase = PHASE_DISCOVERY;
     send_hello();
 }
@@ -106,7 +108,13 @@ void SwarmCore::loop(uint32_t now_ms) {
         rt_.last_heartbeat_ms = now_ms;
     }
 
-    maybe_elect(now_ms);
+    if (!discovering(now_ms)) {
+        maybe_elect(now_ms);
+        if (rt_.phase == PHASE_DISCOVERY) {
+            rt_.phase = (rt_.coordinator != 0) ? PHASE_RUN : PHASE_MEMBERSHIP;
+            rebuild_membership_from_neighbors();
+        }
+    }
 
     const uint32_t period = tick_period_ms();
     if (rt_.coordinator_is_self) {
@@ -137,16 +145,25 @@ void SwarmCore::loop(uint32_t now_ms) {
     }
 }
 
-void SwarmCore::on_packet(const uint8_t* data, size_t length, int8_t rssi) {
+void SwarmCore::on_packet(const uint8_t* data, size_t length, int8_t rssi, const uint8_t* mac) {
     PacketHeader h;
     if (!validate_packet(data, length, h)) {
         return;
     }
-    if (h.sender_id == rt_.self.node_id) {
-        return;
+
+    if (mac != nullptr && transport_ != nullptr && h.sender_id != rt_.self.node_id) {
+        transport_->remember_peer(h.sender_id, mac);
     }
 
     const uint32_t now_ms = millis();
+
+    if (h.sender_id == rt_.self.node_id) {
+        if (h.type == PKT_HELLO || h.type == PKT_HELLO_ACK) {
+            handle_hello(h, data, length, rssi, now_ms);
+        }
+        return;
+    }
+
     NeighborRecord* rec = neighbor_find(rt_.neighbors, h.sender_id);
     if (rec != nullptr && rec->boot_id == h.boot_id && h.sequence != 0 && h.sequence <= rec->last_sequence) {
         return;
@@ -392,6 +409,51 @@ void SwarmCore::apply_winner(NodeId winner, uint64_t epoch) {
     }
 }
 
+bool SwarmCore::discovering(uint32_t now_ms) const {
+    return join_in_discovery(now_ms, discovery_until_ms_);
+}
+
+void SwarmCore::adopt_coordinator(NodeId coord, uint64_t epoch, uint32_t now_ms) {
+    if (coord == 0 || coord == rt_.self.node_id) {
+        return;
+    }
+    rt_.coordinator = coord;
+    rt_.membership.coordinator = coord;
+    rt_.coordinator_is_self = false;
+    if (epoch > rt_.membership.epoch) {
+        rt_.membership.epoch = epoch;
+    }
+    rt_.last_coord_seen_ms = now_ms;
+    rt_.phase = PHASE_RUN;
+}
+
+void SwarmCore::resolve_duplicate_id(HardwareId other_hw) {
+    if (!join_should_yield_node_id(rt_.self.hardware_id, other_hw)) {
+        send_hello();
+        return;
+    }
+    NodeId taken[SWARM_MAX_NODES];
+    uint8_t n = 0;
+    taken[n++] = rt_.self.node_id;
+    for (uint8_t i = 0; i < rt_.neighbors.count && n < SWARM_MAX_NODES; ++i) {
+        taken[n++] = rt_.neighbors.rows[i].node_id;
+    }
+    NodeId next = join_next_free_id(taken, n);
+    if (next == 0) {
+        Serial.println("[C3] node_id collision and swarm is full");
+        return;
+    }
+    Serial.printf("[C3] node_id collision on %02lu, persisting %02lu\n",
+                  static_cast<unsigned long>(rt_.self.node_id),
+                  static_cast<unsigned long>(next));
+    send_goodbye();
+    membership_remove(rt_.membership, rt_.self.node_id);
+    rt_.self.node_id = next;
+    node_identity_force_id(rt_.self, next);
+    membership_add(rt_.membership, next);
+    send_hello();
+}
+
 void SwarmCore::maybe_elect(uint32_t now_ms) {
     if (!should_start_election(rt_, now_ms)) {
         return;
@@ -426,6 +488,13 @@ void SwarmCore::handle_hello(const PacketHeader& h, const uint8_t* buf, size_t l
     if (!decode_hello(buf, len, decoded, p)) {
         return;
     }
+    if (p.node_id == rt_.self.node_id && p.hardware_id != rt_.self.hardware_id) {
+        resolve_duplicate_id(p.hardware_id);
+        return;
+    }
+    if (h.sender_id == rt_.self.node_id) {
+        return;
+    }
     note_peer(h.sender_id, h.boot_id, rssi, h.sequence, now_ms);
     NeighborRecord* rec = neighbor_find(rt_.neighbors, h.sender_id);
     if (rec != nullptr) {
@@ -453,11 +522,15 @@ void SwarmCore::handle_heartbeat(const PacketHeader& h, const uint8_t* buf, size
         rec->last_tick = p.tick;
     }
     if (p.coordinator_id != 0) {
-        if (rt_.coordinator == 0) {
-            rt_.coordinator = p.coordinator_id;
-            rt_.membership.coordinator = p.coordinator_id;
-            rt_.coordinator_is_self = (rt_.coordinator == rt_.self.node_id);
-            rt_.phase = PHASE_RUN;
+        if (join_should_adopt(rt_.self.node_id,
+                              rt_.membership.count,
+                              rt_.membership.epoch,
+                              rt_.coordinator,
+                              discovering(now_ms),
+                              p.coordinator_id,
+                              2,
+                              rt_.membership.epoch)) {
+            adopt_coordinator(p.coordinator_id, rt_.membership.epoch, now_ms);
         }
         if (p.coordinator_id == rt_.coordinator) {
             rt_.last_coord_seen_ms = now_ms;
@@ -471,12 +544,22 @@ void SwarmCore::handle_membership(const PacketHeader& h, const uint8_t* buf, siz
     if (!decode_membership(buf, len, decoded, p)) {
         return;
     }
-    if (p.epoch < rt_.membership.epoch) {
+    const uint32_t now_ms = millis();
+    const uint64_t local_epoch = rt_.membership.epoch;
+    const bool adopt = join_should_adopt(rt_.self.node_id,
+                                         rt_.membership.count,
+                                         local_epoch,
+                                         rt_.coordinator,
+                                         discovering(now_ms),
+                                         p.coordinator,
+                                         p.count,
+                                         p.epoch);
+    if (!adopt && p.epoch < local_epoch) {
         return;
     }
     Membership m;
     membership_clear(m);
-    m.epoch = p.epoch;
+    m.epoch = p.epoch >= local_epoch ? p.epoch : local_epoch;
     m.coordinator = p.coordinator;
     uint8_t n = p.count;
     if (n > SWARM_MAX_NODES) {
@@ -489,13 +572,17 @@ void SwarmCore::handle_membership(const PacketHeader& h, const uint8_t* buf, siz
     }
     membership_add(m, rt_.self.node_id);
     rt_.membership = m;
-    rt_.coordinator = p.coordinator;
-    rt_.coordinator_is_self = (p.coordinator == rt_.self.node_id);
-    if (p.coordinator != 0) {
-        rt_.last_coord_seen_ms = millis();
-        rt_.phase = PHASE_RUN;
+    if (p.coordinator != 0 && p.coordinator != rt_.self.node_id && adopt) {
+        adopt_coordinator(p.coordinator, p.epoch, now_ms);
+    } else {
+        rt_.coordinator = p.coordinator;
+        rt_.coordinator_is_self = (p.coordinator == rt_.self.node_id);
+        if (p.coordinator != 0) {
+            rt_.last_coord_seen_ms = now_ms;
+            rt_.phase = PHASE_RUN;
+        }
     }
-    note_peer(h.sender_id, h.boot_id, 0, h.sequence, millis());
+    note_peer(h.sender_id, h.boot_id, 0, h.sequence, now_ms);
 }
 
 void SwarmCore::handle_election(const PacketHeader& h, const uint8_t* buf, size_t len) {
@@ -549,16 +636,26 @@ void SwarmCore::handle_field_tick(const PacketHeader& h, const uint8_t* buf, siz
     if (!decode_field_tick(buf, len, decoded, p)) {
         return;
     }
-    if (p.membership_epoch < rt_.membership.epoch) {
+    if (p.membership_epoch < rt_.membership.epoch && rt_.membership.count > 1) {
         return;
     }
     note_peer(h.sender_id, h.boot_id, 0, h.sequence, millis());
-    if (p.coordinator_id != 0) {
-        if (rt_.coordinator == 0 || p.coordinator_id == rt_.coordinator) {
+    if (p.coordinator_id != 0 && p.coordinator_id != rt_.self.node_id) {
+        const uint32_t now_ms = millis();
+        if (join_should_adopt(rt_.self.node_id,
+                              rt_.membership.count,
+                              rt_.membership.epoch,
+                              rt_.coordinator,
+                              discovering(now_ms),
+                              p.coordinator_id,
+                              2,
+                              p.membership_epoch)) {
+            adopt_coordinator(p.coordinator_id, p.membership_epoch, now_ms);
+        } else if (rt_.coordinator == 0 || p.coordinator_id == rt_.coordinator) {
             rt_.coordinator = p.coordinator_id;
             rt_.membership.coordinator = p.coordinator_id;
-            rt_.coordinator_is_self = (rt_.coordinator == rt_.self.node_id);
-            rt_.last_coord_seen_ms = millis();
+            rt_.coordinator_is_self = false;
+            rt_.last_coord_seen_ms = now_ms;
         }
     }
     uint64_t before = clock_.tick;

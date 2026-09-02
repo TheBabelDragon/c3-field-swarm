@@ -31,6 +31,10 @@
 #define SWARM_HELLO_PERIOD_MS 750
 #endif
 
+#ifndef SWARM_DISCOVERY_MS
+#define SWARM_DISCOVERY_MS 2250
+#endif
+
 #ifndef SWARM_TICK_DT
 #define SWARM_TICK_DT 0.5f
 #endif
