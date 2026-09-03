@@ -8,7 +8,7 @@
 #endif
 
 #ifndef SWARM_FIRMWARE_VERSION
-#define SWARM_FIRMWARE_VERSION 1
+#define SWARM_FIRMWARE_VERSION 2
 #endif
 
 #ifndef SWARM_MAX_NODES
@@ -60,7 +60,7 @@
 #endif
 
 #ifndef SWARM_TELEMETRY_MS
-#define SWARM_TELEMETRY_MS 2000
+#define SWARM_TELEMETRY_MS 500
 #endif
 
 static constexpr uint32_t kBroadcastNodeId = 0xFFFFFFFFu;

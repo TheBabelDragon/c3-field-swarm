@@ -18,7 +18,12 @@ static void on_rx(const uint8_t* data, size_t length, int8_t rssi, const uint8_t
 
 void setup() {
     Serial.begin(115200);
-    delay(200);
+    Serial.setTxTimeoutMs(0);
+    const uint32_t wait_start = millis();
+    while (!Serial && (millis() - wait_start) < 2500) {
+        delay(10);
+    }
+    delay(150);
 
     NodeIdentity self;
     if (!node_identity_begin(self)) {
@@ -48,6 +53,7 @@ void setup() {
 
     swarm.begin(transport, self, default_capabilities());
     console_begin();
+    telemetry_print(swarm.runtime(), swarm.field(), swarm.clock());
 }
 
 void loop() {
