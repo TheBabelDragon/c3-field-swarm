@@ -21,7 +21,7 @@ static const char* phase_name(SwarmPhase p) {
 static void print_c3json(const SwarmRuntime& rt, const FieldStore& field, const TickClock& clock) {
     Serial.print("C3JSON {");
     Serial.printf("\"type\":\"c3_swarm\",\"source_class\":\"physical\",\"synthetic\":false,");
-    Serial.printf("\"node\":\"c3-%02lu\",\"body_id\":\"c3-%02lu\",\"body_type\":\"c3_swarm\",",
+    Serial.printf("\"node\":\"c3-%02lu\",\"body_id\":\"c3-%02lu\",\"body_type\":\"C3\",",
                   static_cast<unsigned long>(rt.self.node_id),
                   static_cast<unsigned long>(rt.self.node_id));
     Serial.printf("\"node_id\":%lu,\"boot_id\":%lu,\"hw\":%llu,",
@@ -47,28 +47,31 @@ static void print_c3json(const SwarmRuntime& rt, const FieldStore& field, const 
     }
     Serial.print("],\"neighbors\":[");
     bool first = true;
-    for (uint8_t i = 0; i < field.neighbor_count; ++i) {
-        const NeighborField& nf = field.neighbors[i];
-        if (!nf.valid) continue;
-        if (!first) Serial.print(',');
-        first = false;
-        int rssi = 0;
-        bool alive = false;
-        for (uint8_t n = 0; n < rt.neighbors.count; ++n) {
-            if (rt.neighbors.rows[n].node_id == nf.node_id) {
-                rssi = rt.neighbors.rows[n].rssi;
-                alive = rt.neighbors.rows[n].alive;
+    for (uint8_t i = 0; i < rt.neighbors.count; ++i) {
+        const NeighborRecord& row = rt.neighbors.rows[i];
+        if (row.node_id == 0) continue;
+        float temp = 0, info = 0, energy = 0, signal = 0;
+        for (uint8_t f = 0; f < field.neighbor_count; ++f) {
+            const NeighborField& nf = field.neighbors[f];
+            if (nf.valid && nf.node_id == row.node_id) {
+                temp = nf.state.temperature;
+                info = nf.state.information;
+                energy = nf.state.energy;
+                signal = nf.state.signal;
                 break;
             }
         }
-        Serial.printf("{\"node_id\":%lu,\"temperature\":%.4f,\"information\":%.4f,\"energy\":%.4f,\"signal\":%.4f,\"rssi\":%d,\"alive\":%s}",
-                      static_cast<unsigned long>(nf.node_id),
-                      static_cast<double>(nf.state.temperature),
-                      static_cast<double>(nf.state.information),
-                      static_cast<double>(nf.state.energy),
-                      static_cast<double>(nf.state.signal),
-                      rssi,
-                      alive ? "true" : "false");
+        if (!first) Serial.print(',');
+        first = false;
+        Serial.printf("{\"node_id\":%lu,\"hw\":%llu,\"temperature\":%.4f,\"information\":%.4f,\"energy\":%.4f,\"signal\":%.4f,\"rssi\":%d,\"alive\":%s}",
+                      static_cast<unsigned long>(row.node_id),
+                      static_cast<unsigned long long>(row.hardware_id),
+                      static_cast<double>(temp),
+                      static_cast<double>(info),
+                      static_cast<double>(energy),
+                      static_cast<double>(signal),
+                      static_cast<int>(row.rssi),
+                      row.alive ? "true" : "false");
     }
     Serial.println("]}");
 }
