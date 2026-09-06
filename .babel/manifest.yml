@@ -1,0 +1,61 @@
+babel: "0.1"
+identity:
+  name: c3-field-swarm
+  owner: TheBabelDragon
+  repo: TheBabelDragon/c3-field-swarm
+  url: https://github.com/TheBabelDragon/c3-field-swarm
+  kind: wireless-edge
+  version: "0.1.0"
+purpose: >
+  Deterministic ESP32-C3 wireless swarm substrate. Identical firmware on every
+  board. Roles are runtime state. Systems receive a frozen FieldView and emit
+  FieldDelta. Swarm core, ESP-NOW, and bylight_phy are not modified by this
+  contract. bylight_phy stays explicitly isolated.
+status: operational
+entrypoints:
+  - kind: firmware
+    path: src/main.cpp
+  - kind: swarm-core
+    path: include/swarm/swarm_core.h
+    note: do not modify to add metadata
+  - kind: field
+    path: include/field/field_view.h
+  - kind: serial
+    commands: [help, status, nodes, state, tick, neighbors, elect, inject, reset]
+  - kind: host
+    path: tools/swarmctl/swarmctl.py
+runtime:
+  language: C++
+  target: ESP32-C3 Super Mini
+  platform: espressif32@6.9.0
+  transport: ESP-NOW channel 1
+  requires:
+    - PlatformIO
+inputs:
+  - name: ESP-NOW packet
+    schema: swarm-packet.schema.json
+  - name: serial command
+outputs:
+  - name: FieldView
+    schema: field-view.schema.json
+  - name: FieldDelta
+    schema: field-delta.schema.json
+  - name: C3JSON
+    schema: c3json.schema.json
+capabilities:
+  - swarm-discover
+  - field-tick
+  - emit-field-delta
+  - serial-census
+operations:
+  safe:
+    - swarm-discover
+    - serial-census
+    - field-view
+  mutation:
+    - elect
+    - inject
+    - reset
+notes: >
+  Does not implement CAN-FD (field-bus) or the MetaField engine.
+  bylight_phy is an analog PHY island — not part of swarm-core.
