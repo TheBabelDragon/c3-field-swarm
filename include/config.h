@@ -15,6 +15,10 @@
 #define SWARM_MAX_NODES 6
 #endif
 
+#ifndef SWARM_MAX_MEMBERS
+#define SWARM_MAX_MEMBERS SWARM_MAX_NODES
+#endif
+
 #ifndef SWARM_HEARTBEAT_MS
 #define SWARM_HEARTBEAT_MS 500
 #endif
