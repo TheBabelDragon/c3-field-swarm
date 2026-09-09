@@ -76,6 +76,11 @@ inline bool membership_remove(Membership& m, NodeId id) {
     return removed;
 }
 
+// Membership payloads with an older epoch are ignored by the receiver.
+inline bool membership_epoch_is_newer(uint64_t incoming, uint64_t current) {
+    return incoming > current;
+}
+
 struct SwarmRuntime {
     NodeIdentity self;
     uint32_t capabilities;

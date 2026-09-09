@@ -193,6 +193,9 @@ bool decode_heartbeat(const uint8_t* buf, size_t len, PacketHeader& h, Heartbeat
 }
 
 bool encode_membership(uint8_t* buf, size_t cap, size_t& n, const PacketHeader& h, const MembershipPayload& p) {
+    if (p.count > SWARM_MAX_MEMBERS) {
+        return false;
+    }
     if (!write_header_placeholder(buf, cap, h)) return false;
     size_t off = kPacketHeaderSize;
     if (!codec_write_u64(buf, cap, off, p.epoch)) return false;
@@ -213,6 +216,9 @@ bool decode_membership(const uint8_t* buf, size_t len, PacketHeader& h, Membersh
     if (!codec_read_u64(buf, len, off, p.epoch)) return false;
     if (!codec_read_u32(buf, len, off, p.coordinator)) return false;
     if (!codec_read_u8(buf, len, off, p.count)) return false;
+    if (p.count > SWARM_MAX_MEMBERS) {
+        return false;
+    }
     uint8_t r0 = 0, r1 = 0, r2 = 0;
     if (!codec_read_u8(buf, len, off, r0) || !codec_read_u8(buf, len, off, r1) || !codec_read_u8(buf, len, off, r2)) {
         return false;
