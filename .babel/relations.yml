@@ -1,0 +1,24 @@
+produces:
+  - repo: metafield-engine
+    artifact: C3JSON
+  - repo: metafield-engine
+    artifact: FieldDelta
+  - repo: field-os
+    artifact: FieldView
+consumes: []
+compatible_with:
+  - metafield-engine
+  - field-os
+  - field-bus
+observes:
+  - metafield-engine
+controls: []
+extends:
+  - field-os
+depends_on:
+  - babel-interface
+isolates:
+  - name: bylight_phy
+    repo: c3-field-swarm
+    path: bylight_phy/
+    reason: analog PHY island; not swarm-core; not ESP-NOW

@@ -1,0 +1,63 @@
+capabilities:
+  - name: swarm-discover
+    description: Blank C3 discovers on ESP-NOW channel 1 and persists node_id in NVS.
+    inputs: []
+    outputs:
+      - name: membership
+    operation: observe
+    side_effects:
+      - persists node_id in NVS
+      - does not change ESP-NOW framing
+    requires:
+      - ESP-NOW
+    produces:
+      - membership
+    safe: true
+    entry: src/swarm/discovery.cpp
+  - name: field-tick
+    description: Coordinator proposes FIELD_TICK. Systems see frozen FieldView only.
+    inputs:
+      - name: FieldView
+        schema: field-view.schema.json
+    outputs:
+      - name: FieldDelta
+        schema: field-delta.schema.json
+    operation: compute
+    side_effects:
+      - advances local field tick
+    requires:
+      - swarm-core (untouched)
+    produces:
+      - FieldTick
+      - FieldDelta
+    safe: false
+    entry: src/field/field_tick.cpp
+  - name: emit-field-delta
+    description: Systems emit FieldDelta values and never write shared state.
+    inputs:
+      - name: FieldView
+    outputs:
+      - name: FieldDeltaList
+        schema: field-delta.schema.json
+    operation: emit
+    side_effects: []
+    requires:
+      - FieldView
+    produces:
+      - FieldDelta
+    safe: true
+    entry: include/field/field_delta.h
+  - name: serial-census
+    description: USB C3 emits C3JSON membership + neighbor FieldState.
+    inputs: []
+    outputs:
+      - name: C3JSON
+        schema: c3json.schema.json
+    operation: emit
+    side_effects: []
+    requires:
+      - USB serial
+    produces:
+      - C3JSON
+    safe: true
+    entry: src/telemetry/telemetry.cpp

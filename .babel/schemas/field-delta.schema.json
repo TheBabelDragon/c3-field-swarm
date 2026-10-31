@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FieldDelta",
+  "description": "Derived from include/field/field_delta.h.",
+  "type": "object",
+  "required": ["source_node", "tick", "channel", "old_value", "new_value"],
+  "properties": {
+    "source_node": { "type": "integer" },
+    "tick": { "type": "integer" },
+    "channel": { "type": ["string", "integer"] },
+    "old_value": { "type": "number" },
+    "new_value": { "type": "number" }
+  }
+}
